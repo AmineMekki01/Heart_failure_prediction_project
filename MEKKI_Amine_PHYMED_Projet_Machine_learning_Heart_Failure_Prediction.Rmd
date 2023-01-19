@@ -1,0 +1,1146 @@
+---
+title: "Heart Failure Prediction"
+output:
+  html_notebook: default
+  pdf_document: default
+editor_options:
+  chunk_output_type: inline
+---
+
+Name : Amine MEKKI.  
+
+Class : M1 SNS Physique Biomédicale.
+
+
+# 1- Introduction
+
+Cardiovascular Disease is the leading cause of mortality worldwide, claiming an estimated 17.9 million lives per year, accounting for 31% of all fatalities worldwide. Fortunately, most cardiovascular disease may be avoided by incorporating behavioral risk factors into population-wide prevention initiatives.
+
+Acute heart failure is a leading cause of hospitalization and death, and it is an increasing burden on health care systems. The correct risk stratification of patients could improve clinical outcome and resources allocation.
+
+Heart failure means that the heart is unable to pump blood around the body properly. It usually occurs because the heart has become too weak or stiff.
+
+Artificial intelligence (AI) provide a chance to optimize diagnostic and prognosis routes, as well as build personalized treatment techniques through the utilisation of machine learning and deep learning on large datasets.
+
+In this project, we will build a machine learning model to predict heart failure (HF) mortality based on patient characteristics (or features).
+
+## What's the problematic ?
+
+We have a binary classification problem in this study.
+
+We will make a prediction based on the variable Death Event.
+
+Finally, we will construct a variety of Classification models and compare the models that provide the most accurate prediction of Heart Disease.
+
+# 2- EXPLORATORY DATA ANALYSIS & VISUALIZATION
+
+## 2-1 Data preparation
+
+The following function is going to install and load several packages that we are going to use during this project.
+
+```{r}
+# Loading
+ipak <- function(pkg){
+  new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
+  if (length(new.pkg))
+    install.packages(new.pkg, dependencies = TRUE)
+  sapply(pkg, require, character.only = TRUE)
+}
+  packages <- c("tidyverse", "tidytext", "caret", "gsheet", "patchwork", "rpart.plot", "car", "nortest", "rattle", "dplyr", "reshape2", "corrplot","GGally", "RMySQL", "ggplot2", "rpart", "randomForest", "gbm", "naivebayes", "stats", "e1071", 'ModelMetrics', 'MLmetrics',"neuralnet", "class", "OneR", "votesys", "mltools", "mccr", "xgboost")
+ipak(packages)
+
+```
+
+### Reading the DataSet
+
+```{r}
+dataset = read.csv2("/home/amine/Desktop/Sciences de données M1/Projet/heart_failure_clinical_records_dataset.csv")
+```
+
+### Dataset Structure
+
+In the research paper the authors gave us in Table 1 all the meanings, measurement units, and intervals of each feature of the dataset. However, a closer examination of the dataset in R reveals that all features are numeric:
+
+```{r}
+str(dataset) # str() function to get the structure of the dataset
+```
+
+### Binary to factor Transformation
+
+We can see that our data has multiple binary variables (anaemia, diabetes, high_blood_pressure, sex, smoking, DEATH_EVENT), in order improve our classification prediction we are going to convert this variables to factors :
+
+```{r}
+# changing Boolean/binary features to factor 
+New_Dataset <- dataset
+MannDataset <- dataset
+factors <- c('DEATH_EVENT','anaemia','diabetes','high_blood_pressure','sex','smoking')
+for (fact in factors) {
+  dataset[,fact] <- as.factor(dataset[,fact])
+}
+```
+
+In order to make sure that our data is clean, we need to check it's structure and see if it contains "NA" or not :
+
+```{r}
+summary(dataset) # We can see that there is no "NA"
+sum(is.na(dataset)) # In order to make sure that there is no "NA" elements. 
+
+# We can see that platelets number is too high so it's better if we normalized it by 1000.
+dataset$platelets <- (dataset$platelets/1000)
+```
+
+## 2-2 Data Understanding
+
+### Dataset Visualization : Table
+
+In order that we can do analysis on our dataset and perform predictions, we need first to take a look of our data and see how it's organized. The following table resumes all the characteristics of all the features that we have in our dataset.
+
+```{r}
+# age
+minAge <- as.character(min(dataset$age))
+maxAge <- as.character(max(dataset$age))
+
+# anameia
+anam <- unique(dataset$anaemia)
+
+#high_blood_pressure
+hpbd <- unique(dataset$high_blood_pressure)
+
+# Crea
+minCrea <- as.character(min(dataset$creatinine_phosphokinase))
+maxCrea <- as.character(min(dataset$creatinine_phosphokinase))
+
+# Ejection fraction
+minEF <- as.character(min(dataset$ejection_fraction))
+maxEF <- as.character(max(dataset$ejection_fraction))
+
+# Platelets
+minPlatelets <- as.character(round(min(dataset$platelets)/1000, digits = 4))
+maxPlatelets <- as.character(round(max(dataset$platelets)/1000, digits = 4))
+
+# Serum Creatinine
+minSrCr <- as.character(round(min(dataset$serum_creatinine), digits = 4))
+maxSrCr <- as.character(round(max(dataset$serum_creatinine), digits = 4))
+
+# Serum Creatinine
+minSrSd <- as.character(round(min(dataset$serum_sodium), digits = 4))
+maxSrSd <- as.character(round(max(dataset$serum_sodium), digits = 4))
+
+# Time
+minTime <- as.character(round(min(dataset$time), digits = 4))
+maxTime <- as.character(round(max(dataset$time), digits = 4))
+
+data1 = c("Age","Age of the patient", "Years", paste("[",minAge,", ..., ",maxAge,"]"),
+          "Anaemia", "Decrease of red blood cells or hemoglobin", "Boolean", "0, 1",
+          "High blood pressure", "if a patient has hypertension", "Boolean", "0, 1",
+          "Creatinine phosphokinase (CPK)", "if a patient has hypertension", "Boolean", paste("[",minCrea,", ...,",maxCrea,"]"),
+          "Diabetes", "If the patient has diabetes", "Boolean", "0, 1",
+          "Ejection fraction", "Percentage of blood leaving the heart at each contraction", "Percentage", paste("[",minEF,", ..., ",maxEF,"]"),
+          "Sex", "Woman or man", "Binary", "0, 1",
+          "Platelets", "Platelets in the blood", "kiloplatelets/mL", paste("[",minPlatelets,", ..., ",maxPlatelets,"]"),
+          "Serum creatinine", "Level of creatinine in the blood", "mg/dL", paste("[",minSrCr,", ..., ",maxSrCr,"]"),
+          "Serum sodium", "Level of sodium in the blood", "mEq/L", paste("[",minSrSd,", ..., ",maxSrSd,"]"),
+          "Smoking", "If the patient smokes", "Boolean", "0, 1",
+          "Time", "Follow-up period", "Days", paste("[",minTime,", ..., ",maxTime,"]"),
+          "(target) death event", "If the patient died during the follow-up period", "Boolean", "0, 1"
+)
+# Creating the Table 
+Table1 <- matrix(data1,ncol=4, byrow=TRUE)
+
+#define column names and row names of the Table
+colnames(Table1) <- c('Feature', 'Explanation', 'Measurement', 'Range')
+Table1 # Printing the table
+```
+
+1- Age Group: From the table we can see that the minimum age of the patients is 40 yo and the maximum is 95. In many researches, An age over 65 years old is concidered as a risk factor of heart diseases and heart failure. 
+
+2 - Ejection Fraction: Normal range is 50% to 75%, A value from 41% to 49% is considered as borderline, it isn't always a sign that a person is on the verge of having heart failure. It could instead be a sign of damage, such as from a past heart attack. An ejection fraction of more than 75% might be an indicator of heart disorder called hypertrophic cardiomyopathy.
+
+
+3 - Serum Creatinine: For adult men, 0.74 to 1.35 mg/dL. For adult women, 0.59 to 1.04 mg/dL 
+
+4 - Platelets: The platelet count in a typical blood sample ranges from 150,000 to 450,000 platelets per microliter. 
+
+5 - Serum Sodium: Sodium levels in the blood should be between 135 and 145 milliequivalents per liter (mEq/L). 
+
+6- Creatinine Phosphkinase: the normal value is between 10 to 120 micrograms per liter (mcg/L) 
+
+
+### Categorical variable description
+
+From the quick analysis of the structure of our dataset we can notice that it contains several categorical variables, in order to facilitate the comprehension of theses variables, we created the following table that explains the possible labels of each categorical variable. For example we calculated for each variable the count and the frequency of each label (O : False and 1: True) for the total dataset, then we did the same to get their count and their frequency for dead and survived patients.
+
+For this table i used MySQL queries to get some variable's values.
+
+```{r}
+# Table 2 Representation 
+
+require(RMySQL) # if already installed
+
+# Connecting my WampServer (MySQL) database and table with R.
+con <- dbConnect(RMySQL::MySQL(), host = "localhost", dbname="projet", user = "root", password = "")
+test_extraction <- dbReadTable(con, "heart_failure")
+
+# I created the following 2 variables in order i can use them to create the Table 2 without repeating lines of code.
+Table2_attributes = c("anaemia", "high_blood_pressure", "diabetes", "sex", "smoking")
+death_event = "DEATH_EVENT"
+
+dataT2 <- c()
+
+for (attr in Table2_attributes) {
+    feature <- dbGetQuery(con, paste("SELECT count(", attr , ")", " FROM `heart_failure` where ", attr , " = 1;"))
+    non_feature <- dbGetQuery(con, paste("SELECT count(", attr , ")", " FROM `heart_failure` where ", attr , " = 0;"))
+    feature_frequency <- round((feature*100)/(non_feature+feature), digits = 2)
+    non_feature_frequency <- round((non_feature*100)/(non_feature+feature), digits = 2)
+    dead_feature <- dbGetQuery(con, paste("SELECT count(", attr , ")", " FROM `heart_failure` where ", attr , " = 1 and ", death_event, " = 1;"))
+    dead_non_feature <- dbGetQuery(con, paste("SELECT count(", attr , ")", " FROM `heart_failure` where ", attr , " = 0 and ", death_event, " = 1;"))
+    dead_feature_frequency <- round((dead_feature*100)/(dead_feature+dead_non_feature), digits = 2)
+    dead_non_feature_frequency <- round((dead_non_feature*100)/(dead_feature+dead_non_feature), digits = 2)
+    survived_feature <- dbGetQuery(con, paste("SELECT count(", attr , ")", " FROM `heart_failure` where ", attr , " = 1 and ", death_event, " = 0;"))
+    survived_non_feature <- dbGetQuery(con, paste("SELECT count(", attr , ")", " FROM `heart_failure` where ", attr , " = 0 and ", death_event, " = 0;"))
+    survived_feature_frequency <- round((survived_feature*100)/(survived_feature+survived_non_feature), digits = 2)
+    survived_non_feature_frequency <- round((survived_non_feature*100)/(survived_feature+survived_non_feature), digits = 2)
+    
+    # collecting the values in the dataT2 vector
+    dataT2 <- c(dataT2, non_feature, non_feature_frequency, dead_non_feature, dead_non_feature_frequency, survived_non_feature, survived_non_feature_frequency, feature, feature_frequency, dead_feature, dead_feature_frequency, survived_feature, survived_feature_frequency)
+}
+
+
+# Creating the Table 
+Table2 <- matrix(dataT2, ncol=6, byrow=TRUE)
+
+#define column names and row names of the Table
+colnames(Table2) <- c('PatientCount', 'PatientFrequency', 'DeadsCount', 'DeadsFrequency', 'SurvivedCount','SurvivedFrequency')
+rownames(Table2) <- c("Anaemia (0: false)","Anaemia (1: true)", "High blood pressure (0: false)", "High blood pressure (1: true)", "Diabetes (0: false)", "Diabetes (1: true)",'Sex(0: Female)', 'Sex(1 : Male)',"Smoking (0: false)", "Smoking (1: true)")
+
+view(Table2)
+
+```
+
+### Numeric features description
+
+In the following Table 3, we represented the different characteristics (Mean, Median and standard deviation) of different variables of our dataset so as we can have a full comprehension of our numeric features.
+
+```{r}
+
+# Data Filtering
+# Here i preferred to use R for filtering and not SQL.
+DED <- dataset[dataset$DEATH_EVENT == 1,] # Let's create a dataset that contains only the rows of our dead patients 
+DEND <- dataset[dataset$DEATH_EVENT == 0,] # Let's create a dataset that contains only the rows of our non dead patients 
+
+data_Table3 <- c() # Initiating a vector to store the values of our different characteristics.
+
+Table3_Dataset <- dataset[, c("age", "creatinine_phosphokinase", 'ejection_fraction', 'platelets',"serum_creatinine", "serum_sodium", "time")] # I created this dataset so as i can work on it to create the Table3
+
+# Here i am going to create a for loop in order to get the values of each feature
+for (con_attr in colnames(Table3_Dataset)) {
+  feature_Median <- median(Table3_Dataset[,con_attr])
+
+  feature_Mean <- mean(Table3_Dataset[,con_attr])
+  feature_Sd <- sd(Table3_Dataset[,con_attr])
+  feature_dead_Median <- median(DED[,con_attr])
+  feature_dead_Mean <- mean(DED[,con_attr])
+  feature_dead_Sd <- sd(DED[,con_attr])
+  feature_non_dead_Median <- median(DEND[,con_attr])
+  feature_non_dead_Mean <- mean(DEND[,con_attr])
+  feature_non_dead_Sd <- sd(DEND[,con_attr])
+  
+  data_Table3 <- c(data_Table3, feature_Median, feature_Mean, feature_Sd, feature_dead_Median, feature_dead_Mean, feature_dead_Sd, feature_non_dead_Median, feature_non_dead_Mean, feature_non_dead_Sd)
+}
+
+# i added this for loop in order to round the values.
+for (i in 1:length(data_Table3)) {
+  data_Table3[i] = round(data_Table3[i], digits = 2)
+}
+
+# Creating the Table 3 using matrix() function
+Table3 <- matrix(data_Table3,ncol=9, byrow=TRUE)
+
+#define column names and row names of the Table
+
+colnames(Table3) <- c('SampleMedian', 'SampleMean', 'SampleSD', 'DeadsMedian', "DeadsMean", "DeadsSD", 'SurvivedMedian','SurvivedMean', "SurvivedSD")
+
+rownames(Table3) <- c("Age", "Creatinine phosphokinase", 'Ejection fraction', 'Platelets',"Serum creatinine", "Serum sodium", "Time")
+#view(Table3) # Printing the table
+
+```
+
+## 2-3 Dataset features Graphic Representaion
+
+### Categorical Variables
+
+In order to understand the categorical variables of our dataset, its better that we do a visual (graphical) representation of them. From the following figure and the Table 2. We can see that maybe some variables are related to death, but we can't say that for sure because our data isn't well balanced for some variables. For example,64.88% of our patients are males and 35.12% are Females. The number of males is almost 2 times bigger than females. That what maybe explaines that we have a higher death (64.58%) and survival (65.02%) rates among men. And the same for many other categorical variables. So in order to get a clear idea if our variables are related to the death feature we have to run statistical test and correlation to make sure of that.
+
+```{r}
+
+#1. Sex
+
+SexPlot <- ggplot(dataset, aes(x=sex, fill = DEATH_EVENT)) + geom_bar(stat = 'count', show.legend = FALSE) + scale_x_discrete(labels=c("0 (Female) ","1 (Male)"))+ scale_fill_manual(values = c("lightblue","#A8311D" ), name = "Death Event", labels =c("0 (False) ","1 (True)")) + labs(x="Sex") + theme_minimal(base_size=10) + geom_label(stat = "count", aes(label= ..count..), show.legend = FALSE) 
+
+DiabetesPlot <- ggplot(dataset, aes(x=diabetes, fill = DEATH_EVENT)) + geom_bar(stat = 'count', show.legend = FALSE) + scale_x_discrete(labels=c("0 (Non diabetic) ","1 (diabetic)"))+ scale_fill_manual(values = c("lightblue","#A8311D" ), name = "Death Event", labels =c("0 (False) ","1 (True)")) + labs(x="Diabetes") + theme_minimal(base_size=10) + geom_label(stat = "count", aes(label= ..count..), show.legend = FALSE)
+
+AnaemiaPlot <- ggplot(dataset, aes(x=anaemia, fill = DEATH_EVENT)) + geom_bar(stat = 'count', show.legend = FALSE) + scale_x_discrete(labels=c("0 (Non anemic) ","1 (anemic)"))+ scale_fill_manual(values = c("lightblue","#A8311D" ), name = "Death Event", labels =c("0 (False) ","1 (True)")) + labs(x="Anaemia") + theme_minimal(base_size=10) + geom_label(stat = "count", aes(label= ..count..), show.legend = FALSE)
+
+HBPPlot <- ggplot(dataset, aes(x=high_blood_pressure, fill = DEATH_EVENT)) + geom_bar(stat = 'count', show.legend = FALSE) + scale_x_discrete(labels=c("0 (FALSE) ","1 (TRUE)"))+ scale_fill_manual(values = c("lightblue","#A8311D" ), name = "Death Event", labels =c("0 (False) ","1 (True)")) + labs(x="High Blood Pressure") + theme_minimal(base_size=10) + geom_label(stat = "count", aes(label= ..count..), show.legend = FALSE)
+
+
+SmokingPlot <- ggplot(dataset, aes(x=smoking, fill = DEATH_EVENT)) + geom_bar(stat = 'count', show.legend = FALSE) + scale_x_discrete(labels=c("0 (FALSE) ","1 (TRUE)"))+ scale_fill_manual(values = c("lightblue","#A8311D" ), name = "Death Event", labels =c("0 (False) ","1 (True)")) + labs(x="Smoking") + theme_minimal(base_size=10) + geom_label(stat = "count", aes(label= ..count..), show.legend = FALSE)
+
+DeathPlot <- ggplot(dataset, aes(x=DEATH_EVENT, fill = DEATH_EVENT)) + geom_bar(stat = 'count', show.legend = FALSE) + scale_x_discrete(labels=c("0 (FALSE) ","1 (TRUE)"))+ scale_fill_manual(values = c("lightblue","#A8311D" ), name = "Death Event", labels =c("0 (False) ","1 (True)")) + labs(x="DEATH EVENT") + theme_minimal(base_size=10) + geom_label(stat = "count", aes(label= ..count..))
+
+(SexPlot+DiabetesPlot+AnaemiaPlot) / (HBPPlot+SmokingPlot+DeathPlot) + plot_annotation(title="Binary variables Distribution")
+
+```
+
+### Numeric Variables
+
+```{r}
+
+agePlot <- ggplot(dataset,aes(x = age, fill = DEATH_EVENT))+geom_histogram(binwidth = 5, position = "identity",alpha = 0.5,color = "white")+scale_fill_manual(values = c("#5DCAF0", "#FA5136"))+
+  theme(plot.caption = element_text(hjust = 0.5,face = "italic"))+
+  scale_x_continuous(breaks = seq(40,100,10))
+
+agePlot
+
+
+ejectionFraction_graph <-ggplot(dataset, aes(x = ejection_fraction, fill = DEATH_EVENT))+geom_density(alpha = 0.5)+
+  scale_fill_manual(values = c("#58C9DB", "#FFB366"))+
+  scale_x_continuous(breaks = seq(20,80,10))+
+  geom_vline(aes(xintercept = mean(ejection_fraction[DEATH_EVENT == 0])), color = "grey33")+
+  geom_vline(aes(xintercept = mean(ejection_fraction[DEATH_EVENT == 1])), color = "goldenrod1")+
+  geom_curve(aes(xend = mean(ejection_fraction[DEATH_EVENT == 0])), y = 0.05, x = 50, yend  = 0.04, arrow = arrow(length = unit(0.2,"cm")),color = "black")+
+  geom_curve(aes(xend = mean(ejection_fraction[DEATH_EVENT == 1])), x = 27,yend= 0.04, y = 0.05, arrow = arrow(length = unit(0.2,"cm")), color = "black")+
+  annotate("text", x = 50, y = 0.048, label = "mean for non death events", size = 2.5)+
+  annotate("text", x = 27, y = 0.052, label = "mean for death events", size = 2.5)+
+  annotate("text",x = 60, y = 0.05, label = "Normal", color  = "darkgreen")+
+  annotate("text", x = 78, y = 0.05, label = "High Function", color = "darkorange")+
+  annotate("text", x = 35, y = 0.05, label = "Low Function", color = "darkred")+
+  geom_vline(xintercept = 50, linetype = "dashed")+
+  geom_vline(xintercept = 70, linetype = "dashed")+
+  theme(plot.caption = element_text(hjust = 0.5, face = "italic"))+
+  labs(caption = "ii. Distribution of ejection fraction with death event")
+
+ejectionFraction_graph
+
+serum_creatinine_graph <- ggplot(dataset, aes(x = serum_creatinine, fill = DEATH_EVENT))+geom_density(alpha = 0.5)+
+  scale_fill_manual(values = c("#58C9DB", "#FFB366"))+
+  #scale_x_continuous(breaks = seq(20,80,10))+
+  geom_vline(aes(xintercept = mean(serum_creatinine[DEATH_EVENT == 0])), color = "grey33")+
+  geom_vline(aes(xintercept = mean(serum_creatinine[DEATH_EVENT == 1])), color = "goldenrod1")+
+  geom_curve(aes(xend = mean(serum_creatinine[DEATH_EVENT == 0])), yend = 0.9, x = 2.5, y  = 1.25, arrow = arrow(length = unit(0.2,"cm")),color = "black")+
+  geom_curve(aes(xend = mean(serum_creatinine[DEATH_EVENT == 1])), x = 3,yend= 0.5, y = 0.9, arrow = arrow(length = unit(0.2,"cm")), color = "black")+
+  annotate("text", x = 2.5, y = 1.2, label = "mean for non death events", size = 2.5)+
+  annotate("text", x = 3, y = 0.85, label = "mean for death events", size = 2.5)+
+  geom_vline(xintercept = 0.84, linetype = "dashed")+
+  geom_vline(xintercept = 1.4, linetype = "dashed")+
+  theme(plot.caption = element_text(hjust = 0.5, face = "italic"))+
+  annotate("text",label = "For creatinine > 2.5 \n60% chances of death", x = 5, y = 0.5)
+serum_creatinine_graph
+```
+
+From the observation of the 3 above graphs we can see that there is a correlation between this 3 variables (age, fraction ejection and serum creatinine) that we are going to confirm using sevral statistical tests.
+
+# 3- Statistical Test
+
+### 3-1 Data variables Correlation
+
+In order to see if there is any correlation between our variables and the death event variable, we performed correlation tests as shown in the next 2 plots.
+
+```{r}
+# Correlation plot and heat map of our diffrent dataset features.
+
+cor(New_Dataset) %>%
+  corrplot(method = "color", type ='lower', tl.col = "black", tl.srt = 45, addCoef.col = TRUE, p.mat = cor.mtest(New_Dataset)$p, sig.level = 0.05, number.cex = 0.5)
+
+
+ggcorr(New_Dataset, method = c("pairwise", "pearson"),
+  nbreaks = NULL, digits = 2, low = "#3B9AB2",
+  mid = "#EEEEEE", high = "#F21A00",
+  geom = "tile", label = FALSE,
+  label_alpha = FALSE)
+```
+As we can see from the two plot above, the DEATH_EVENT variable is correlated with the variable : age, ejection fraction, serum creatinine, serum sodium and time.
+
+## 3-2 Mann--Whitney U test
+
+When applied to each feature in relation to the death event target, the Mann--Whitney U test (or Wilcoxon rank--sum test) [85] detects whether we can reject the null hypothesis that the distribution of each feature for the groups of samples defined by death event is the same. A low p-value for this test (close to 0) indicates that the analyzed feature has a strong relationship with the death event, whereas a high p-value (close to 1) indicates the opposite.
+
+```{r}
+# Creating a dataset specially for this test.
+MannData <- MannDataset[1:11]
+
+wilcox_test_results  <- c()
+for (i in 1:length(MannData)) {
+  wilcox_test_feature <- wilcox.test(formula(paste(MannData[i]," ~ DEATH_EVENT")),
+                   data = dataset,
+                   exact = FALSE)
+  wilcox_test_results <- c(wilcox_test_results, round(wilcox_test_feature$p.value, digits = 6))
+}
+
+Table5 <- data.frame(V1 = c("age","anaemia","creatinine_phosphokinase","diabetes","ejection_fraction", "high_blood_pressure","platelets","serum_creatinine","serum_sodium", "sex","smoking"), V2 = wilcox_test_results)
+
+Table5 <- Table5[order(Table5$V2), ]
+Table5$Rank <-  c(1, 2, 3, 4, 5, 6,7,8,9,10,11)
+
+names(Table5)[names(Table5) == "V1"] <- "Feature"
+names(Table5)[names(Table5) == "V2"] <- "Mann–Whitney U Test p-value"
+
+Table5 <- Table5 %>% select(Rank, Feature, `Mann–Whitney U Test p-value`)
+#view(Table5)
+
+```
+
+## 3-3 Pearson correlation coefficients (PCC) and Shapiro--Wilk tests
+
+The Pearson correlation coefficient (or Pearson product-moment correlation coefficient, PCC) [86] represents the linear correlation between elements in two lists that have the same elements in different positions. If the elements of the two lists have linear correlation, the absolute value of PCC produces a high value (close to 1), otherwise it produces a low value (close to 0).
+
+```{r}
+#TABLE6
+
+CorrelationVect = c()
+for (corl in 1:11) {
+  correlation <- round(abs(cor(New_Dataset[,corl], New_Dataset$DEATH_EVENT, method="pearson")), digits =3)
+  CorrelationVect = c(CorrelationVect, correlation)
+  CorrelationVect = as.numeric(CorrelationVect)
+}
+
+
+CorrelationVect <- c(CorrelationVect, "")
+Table6G <- data.frame(V1 = c("age","anaemia","creatinine_phosphokinase","diabetes","ejection_fraction", "high_blood_pressure","platelets","serum_creatinine","serum_sodium", "sex","smoking", ""), V2 = CorrelationVect)
+
+Table6G <- Table6G[order(Table6G$V2, decreasing = TRUE), ]
+Table6G$Rank <-  c(1, 2, 3, 4, 5, 6,7,8,9,10,11,12)
+
+names(Table6G)[names(Table6G) == "V1"] <- "Feature"
+names(Table6G)[names(Table6G) == "V2"] <- "abs(PCC)"
+
+Table6G <- Table6G %>% select(Rank, Feature, `abs(PCC)`)
+
+
+shapiroVect = c()
+for (shap in 1:12) {
+  shapiro_test <- shapiro.test(New_Dataset[,shap])
+  shapiroVect = c(shapiroVect, shapiro_test$p.value)
+  shapiroVect = as.numeric(shapiroVect)
+}
+
+Table6D <- data.frame(V1 = c("age","anaemia","creatinine_phosphokinase","diabetes","ejection_fraction", "high_blood_pressure","platelets","serum_creatinine","serum_sodium", "sex","smoking", "DEATH_EVENT"), V2 = format(shapiroVect, format = "e", digits = 3) )
+Table6D <- Table6D[order(as.numeric(Table6D$V2), decreasing = FALSE), ]
+Table6D$Rank <-  c(1, 2, 3, 4, 5, 6,7,8,9,10,11,12)
+names(Table6D)[names(Table6D) == "V1"] <- "Feature"
+names(Table6D)[names(Table6D) == "V2"] <- "Shapiro–Wilk test Test p-value"
+
+Table6D <- Table6D %>% select(Rank, Feature, `Shapiro–Wilk test Test p-value`)
+Table6D$`Shapiro–Wilk test Test p-value` <- as.numeric(Table6D$`Shapiro–Wilk test Test p-value`) 
+
+Table6 <- cbind(Table6G, Table6D)
+
+#view(Table6)
+```
+
+## 3-4 Chi squared test
+The chi square test (or χ2 test) [87] between two features determines the likelihood that an observed distribution is due to chance [89]. A low p-value (close to 0) indicates a strong relationship between the two features; a high p-value (close to 1) indicates that the null hypothesis of independence cannot be discarded.
+
+```{r}
+xhi2  <- c()
+for (ichi in 1:length(MannData)) {
+  resxhi2 <- chisq.test(table(MannDataset[,ichi], MannDataset$DEATH_EVENT), simulate.p.value = TRUE)
+  xhi2 <- c(xhi2,round(resxhi2$p.value, digits = 6))
+}
+
+Table7 <- data.frame(V1 = c("age","anaemia","creatinine_phosphokinase","diabetes","ejection_fraction", "high_blood_pressure","platelets","serum_creatinine","serum_sodium", "sex","smoking"), V2 = xhi2)
+
+Table7 <- Table7[order(Table7$V2), ]
+Table7$Rank <-  c(1, 2, 3, 4, 5, 6,7,8,9,10,11)
+
+names(Table7)[names(Table7) == "V1"] <- "Feature"
+names(Table7)[names(Table7) == "V2"] <- "Chi squared test Test p-value"
+
+Table7 <- Table7 %>% select(Rank, Feature, `Chi squared test Test p-value`)
+#view(Table7)
+
+```
+
+From the above tables we can see that the features (Serum creatinine, Ejection fraction, Age and Serum soduim) are the most important features of the dataset that depends on the Death Event feature.
+
+# 4- MACHINE LEARNING
+
+Now, we are going to create some models and check the performance measures. In this notebook, we will look at their accuracy, recall, confusion matrix and several characteristics.
+
+## 4-1 Machine learning models used in this notebook.
+### 4-1-1 Random Forest
+
+Random forest is a versatile, easy-to-use machine learning algorithm that produces excellent results most of the time even without hyper-parameter tuning. Because of its simplicity and diversity, it is also one of the most widely used algorithms (it can be used for both classification and regression tasks).
+
+### 4-1-2 Decision tree
+
+A decision tree is a supervised learning algorithm that can order classes on a fine level, making it ideal for classification problems. It works like a flow chart, separating data points into two similar categories at a time, starting with the "tree trunk" and progressing to "branches" and "leaves,". 
+
+### 4-1-3 Gradient Boosting.
+
+In Gradient Boosting, each predictor attempts to outperform its predecessor by reducing errors. Gradient Boosting's fascinating idea is that instead of fitting a predictor to the data at each iteration, it actually fits a new predictor to the residual errors made by the previous predictor.
+
+### 4-1-4 Naive Bayes
+
+Naives Bayes classifier is a probabilistic machine learning model used for classification. The classifier's crux is based on the Bayes theorem. Using this theorem we can calculate the likelihood of A occurring given that B has occurred.
+
+### 4-1-5 K-nearest Neighbors
+The k-nearest neighbors (k-NN) pattern recognition algorithm uses training datasets to find the k closest relatives in future examples.
+When using k-NN for classification, we calculate to place data in the category of its nearest neighbor. If k = 1, it is assigned to the class closest to 1. A plurality poll of K's neighbors is used to classify it.
+
+### 4-1-6 One-Rule
+OneR, which stands for "One Rule" is a simple but accurate classification algorithm that generates one rule for each predictor in the data and then chooses the rule with the smallest total error as its "one rule." To generate a rule for a predictor, we build a frequency table for each predictor versus the target.
+
+### 4-1-7 SVM Radial
+Support vector machines are a well-known and powerful classification technique that does not use a probabilistic model, like any other classifier, but instead generates hyperplanes or simply draws lines to separate and classify data in a feature space into different regions.
+
+### 4-1-8 Artificial neural netwrok (ANN)
+One of the most important tools in machine learning is artificial neural networks. They are brain-inspired systems, as the "neural" part of their name implies, and are designed to mimic how humans learn. Neural networks are made up of input and output layers, as well as (in most cases) a hidden layer made up of units that transform the input into something usable by the output layer. ANNs have three interconnected layers. The first layer is made up of input neurons. These neurons transmit data to the second layer, which in turn transmits output neurons to the third layer. ANNs are non-linear statistical data modeling tools that are used to model complex relationships between inputs and outputs or to find patterns.
+
+## 4-2 Machine Learning with the whole dataset
+
+We used the models that we introduced above to predict the patient's survival. I ran each method 100 times and reported the average score.
+
+```{r}
+
+# Table 4 : Survival prediction results on all clinical features – mean of 100 executions
+
+# we don't need time because for real patients we wont have the feature time so its best to remove it from the list.
+datasetMachineLearning <- subset(dataset, select = -time)
+
+# Number of runs of the pipeline
+nRun <- 100
+res <- c()
+
+# Asssigning nTrain variable for the partition rate.
+nTrain <- round(0.8*nrow(datasetMachineLearning))  
+
+# Initializing our results vecotrs for each model 
+forestResult <- c()
+treeResult <- c()
+grBosResult <- c()
+naiveBayesResult <- c()
+OneRuleResult <- c()
+knnResult <- c()
+ANNResult <- c()
+
+#linRegResult <- c()
+svmRadResult <- c()
+
+# assigning an ind variable so as i don't repeat the line so much.
+ind <- eval(nTrain+1):nrow(dataset)
+
+for (irun in 1:nRun) {
+   cat(irun, "")
+  
+  # sampling the rows of my data
+  datasetMachineLearning <- datasetMachineLearning[sample(nrow(datasetMachineLearning)),] 
+  
+  # Data Division into training set and testing set.
+  train <- datasetMachineLearning[1:nTrain ,] # Train set
+  test <- datasetMachineLearning[ind ,] # test set
+  
+  # Getting extra dataset for testing and training where in certain model i will need the Death_event attribute to be a factor and in other models as numeric.
+  train_char <- train 
+  train_char$DEATH_EVENT <- as.character(train_char$DEATH_EVENT)
+  
+          # # #  # # #  # # #  # # # 
+  
+  # # #   Machine Learning Models     # # # 
+
+          # # #  # # #  # # #  # # #
+  
+    ## Random Forest ##
+      # Random forests Learning:
+  forest_model <- randomForest(DEATH_EVENT~., train, importance = TRUE)
+      # Random forests Prediction:
+  forestPrediction <- predict(forest_model, test, type='class')
+  forestPredictionProb <- predict(forest_model, test, type='prob')
+      # Random forests Evaluation:
+  ForestTable <- caret::confusionMatrix(forestPrediction,test$DEATH_EVENT, mode= 'everything', positive ="1")
+  forestTruePos <- ForestTable$table["1","1"]
+  forestTrueNeg <- ForestTable$table["0","0"]
+  forestFalsePos <- ForestTable$table["1","0"]
+  forestFalseNeg <- ForestTable$table["0","1"]
+  
+  forestSpecificity_TNR <- forestTrueNeg/(forestTrueNeg + forestFalsePos)
+  forestRecall_TPR <- forestTruePos/(forestTruePos+forestFalseNeg)
+  forestPrecision <- forestTruePos/(forestTruePos+forestFalsePos)
+  forestMCC <- mcc(test$DEATH_EVENT, forestPrediction)
+  # forestMCC <- ((forestTruePos * forestTrueNeg) - (forestFalsePos * forestFalseNeg)) / ((forestTruePos + forestFalsePos) * (forestTruePos + forestFalseNeg) * (forestTrueNeg + forestFalsePos) * (forestTrueNeg + forestFalseNeg))^(0.5)
+  
+  forestAccuracy <- (forestTruePos+forestTrueNeg) / (forestTruePos+forestTrueNeg+forestFalsePos+forestFalseNeg)
+  forestF1 <- 2 * ((forestPrecision*forestRecall_TPR)/(forestPrecision+forestRecall_TPR))
+  
+  forestAUC <- ModelMetrics::auc(test$DEATH_EVENT, forestPrediction)
+  forestAUCpr <- MLmetrics::PRAUC(forestPredictionProb[,'1'], test$DEATH_EVENT)
+    # https://search.r-project.org/CRAN/refmans/MLmetrics/html/PRAUC.html
+      # Random forests Results
+  forestResult_run <- c(forestMCC, forestF1, forestAccuracy, forestRecall_TPR, forestSpecificity_TNR, forestAUCpr, forestAUC)
+  forestResult <- rbind(forestResult, forestResult_run)
+  
+  
+    ## Decision Tree ##
+      # Decision Tree Learning:
+  tree_model <- rpart(DEATH_EVENT~., train)
+      # Decision Tree Prediction::
+  TreePrediction <- predict(tree_model, test, type='class')
+  TreePredictionProb <- predict(tree_model, test, type='prob')
+      # Decision Tree Evaluation:
+  TreeTable <- caret::confusionMatrix(TreePrediction,test$DEATH_EVENT, mode= 'everything', positive ="1")
+  TreeTruePos <- TreeTable$table["1","1"]
+  TreeTrueNeg <- TreeTable$table["0","0"]
+  TreeFalsePos <- TreeTable$table["1","0"]
+  TreeFalseNeg <- TreeTable$table["0","1"]
+  TreeAccuracy <- TreeTable$overall["Accuracy"]
+  TreeF1 <- TreeTable$byClass["F1"]
+  TreeSpecificity_TNR <- TreeTrueNeg/(TreeTrueNeg + TreeFalsePos)
+  TreeRecall_TPR <- TreeTruePos/(TreeTruePos+TreeFalseNeg)
+  TreePrecision <- TreeTruePos/(TreeTruePos+TreeFalsePos)
+  
+  TreeAccuracy <- (TreeTruePos+TreeTrueNeg) / (TreeTruePos+TreeTrueNeg+TreeFalsePos+TreeFalseNeg)
+  TreeF1 <- 2 * ((TreePrecision*TreeRecall_TPR)/(TreePrecision+TreeRecall_TPR))
+  
+  TreeMCC <- mcc(test$DEATH_EVENT,TreePrediction)
+  # TreeMCC <- ((TreeTruePos * TreeTrueNeg) - (TreeFalsePos * TreeFalseNeg)) / ((TreeTruePos + TreeFalsePos) * (TreeTruePos + TreeFalseNeg) * (TreeTrueNeg + TreeFalsePos) * (TreeTrueNeg + TreeFalseNeg))^(0.5)
+  #https://search.r-project.org/CRAN/refmans/MLmetrics/html/PRAUC.html
+  
+  
+  TreeAUC <- ModelMetrics::auc(test$DEATH_EVENT, TreePrediction)
+  TreeAUCpr <- MLmetrics::PRAUC(TreePredictionProb[,'1'], test$DEATH_EVENT)
+      # Decision tree Results
+  TreeResult_run <- c(TreeMCC, TreeF1, TreeAccuracy, TreeRecall_TPR, TreeSpecificity_TNR, TreeAUCpr, TreeAUC)
+  treeResult <- rbind(treeResult, TreeResult_run)
+  
+  
+    ## Gradient boosting ##
+      # Gradient boosting Learning:
+  # grBos_model <- gbm(DEATH_EVENT~., data = train_char, distribution = "bernoulli")
+  # control_gbm = trainControl(method = "repeatedcv",
+  #                             number = 10,
+  #                             repeats = 10)
+  # 
+  #  grid_gbm = expand.grid(interaction.depth = c(1, 2, 3, 4, 5, 6),
+  #                         n.trees = (1:10),
+  #                         shrinkage = 0.1,
+  #                         n.minobsinnode = 10)
+  # 
+  #  model_gbm = train(DEATH_EVENT ~ .,
+  #                    data = train,
+  #                    method = "gbm",
+  #                    tuneGrid = grid_gbm,
+  #                    trControl = control_gbm,
+  #                    verbose = FALSE)
+     # Tuning parameter 'shrinkage' was held constant at a value of 0.1 Tuning parameter 'n.minobsinnode' was held constant at a value of 10 Accuracy was used to select the optimal model using the largest value. The final values used for the model were n.trees = 10, interaction.depth = 5, shrinkage = 0.1 and n.minobsinnode = 10. There were 38 warnings (use warnings() to see them)
+
+   Grboost_model <- gbm(DEATH_EVENT ~.,data= train_char, distribution = "bernoulli")
+      # Random Grboosts Prediction:
+  GrboostPrediction <- predict(Grboost_model, test, type='response')
+  GrboostPredictionBinnary <- rep("0", nrow(test))
+  GrboostPredictionBinnary[which(GrboostPrediction>=0.5)] <- '1'
+  GrboostPredictionBinnary <- factor(GrboostPredictionBinnary, levels = levels(test$DEATH_EVENT))
+  GrboostPredictionSoft <- GrboostPrediction
+
+  grBosTable <- caret::confusionMatrix(GrboostPredictionBinnary, test$DEATH_EVENT, mode= 'everything', positive ="1" )
+  grBosTruePos <- grBosTable$table["1","1"]
+  grBosTrueNeg <- grBosTable$table["0","0"]
+  grBosFalsePos <- grBosTable$table["1","0"]
+  grBosFalseNeg <- grBosTable$table["0","1"]
+  grBosAccuracy <- grBosTable$overall["Accuracy"]
+  grBosF1 <- grBosTable$byClass["F1"]
+  grBosSpecificity_TNR <- grBosTrueNeg/(grBosTrueNeg + grBosFalsePos)
+  grBosRecall_TPR <- grBosTruePos/(grBosTruePos+grBosFalseNeg)
+  grBosPrecision <- grBosTruePos/(grBosTruePos+grBosFalsePos)
+  
+  grBosAccuracy <- (grBosTruePos+grBosTrueNeg) / (grBosTruePos+grBosTrueNeg+grBosFalsePos+grBosFalseNeg)
+  grBosF1 <- 2 * ((grBosPrecision*grBosRecall_TPR)/(grBosPrecision+grBosRecall_TPR))
+  grBosMCC <- mcc(test$DEATH_EVENT,GrboostPredictionBinnary)
+  grBosMCC <- ((grBosTruePos * grBosTrueNeg) - (grBosFalsePos * grBosFalseNeg)) / ((grBosTruePos + grBosFalsePos) * (grBosTruePos + grBosFalseNeg) * (grBosTrueNeg + grBosFalsePos) * (grBosTrueNeg + grBosFalseNeg))^(0.5)
+  grBosAUC <- ModelMetrics::auc(test$DEATH_EVENT, GrboostPredictionBinnary)
+  grBosAUCpr <- MLmetrics::PRAUC(GrboostPredictionSoft, test$DEATH_EVENT) 
+      # Gradient boosting Results
+  grBosResult_run <- c(grBosMCC, grBosF1, grBosAccuracy, grBosRecall_TPR, grBosSpecificity_TNR, grBosAUCpr, grBosAUC)
+  grBosResult <- rbind(grBosResult, grBosResult_run)
+  
+
+    ## Naive Bayes ##
+      # Naive Bayes Learning:
+  naiveBayes_model <- naiveBayes(DEATH_EVENT~., train)
+      # Naive Bayes Prediction:
+  naiveBayesPrediction <- predict(naiveBayes_model, test, type='class')
+  naiveBayesPredictionProb <- predict(naiveBayes_model, test, type='raw')
+      # Naive Bayes Evaluation:
+  naiveBayesTable <- caret::confusionMatrix(naiveBayesPrediction,test$DEATH_EVENT)
+  naiveBayesTruePos <- naiveBayesTable$table["1","1"]
+  naiveBayesTrueNeg <- naiveBayesTable$table["0","0"]
+  naiveBayesFalsePos <- naiveBayesTable$table["1","0"]
+  naiveBayesFalseNeg <- naiveBayesTable$table["0","1"]
+  
+  naiveBayesSpecificity_TNR <- naiveBayesTrueNeg/(naiveBayesTrueNeg + naiveBayesFalsePos)
+  naiveBayesRecall_TPR <- naiveBayesTruePos/(naiveBayesTruePos+naiveBayesFalseNeg)
+  naiveBayesPrecision <- naiveBayesTruePos/(naiveBayesTruePos+naiveBayesFalsePos)
+  
+  naiveBayesAccuracy <- (naiveBayesTruePos+naiveBayesTrueNeg) / (naiveBayesTruePos+naiveBayesTrueNeg+naiveBayesFalsePos+naiveBayesFalseNeg)
+  naiveBayesF1 <- 2 * ((naiveBayesPrecision*naiveBayesRecall_TPR)/(naiveBayesPrecision+naiveBayesRecall_TPR))
+  naiveBayesMCC <- mcc(test$DEATH_EVENT,naiveBayesPrediction)
+  # naiveBayesMCC <- ((naiveBayesTruePos * naiveBayesTrueNeg) - (naiveBayesFalsePos * naiveBayesFalseNeg)) / (((naiveBayesTruePos + naiveBayesFalsePos) * (naiveBayesTruePos + naiveBayesFalseNeg) * (naiveBayesTrueNeg + naiveBayesFalsePos) * (naiveBayesTrueNeg + naiveBayesFalseNeg))^(0.5))
+  
+  naiveBayesAUC <- ModelMetrics::auc(test$DEATH_EVENT, naiveBayesPrediction)
+  naiveBayesAUCpr <- MLmetrics::PRAUC(naiveBayesPredictionProb[,'1'], test$DEATH_EVENT)
+  
+      # Naive Bayes Results
+  naiveBayesResult_run <- c(naiveBayesMCC, naiveBayesF1, naiveBayesAccuracy, naiveBayesRecall_TPR, naiveBayesSpecificity_TNR, naiveBayesAUCpr, naiveBayesAUC)
+  naiveBayesResult <- rbind(naiveBayesResult, naiveBayesResult_run)
+  
+  
+    ## KNN Model ##
+        # KNN Model Learning:
+  KNN_model <- knn(train = train, test = test, cl = train$DEATH_EVENT, k = 3)
+  KNN_modelProb <- knn(train = train, test = test, cl = train$DEATH_EVENT, k = 3, prob=T)
+        # KNN Model Evaluation:
+  KNN_Table <- caret::confusionMatrix(test[,'DEATH_EVENT'],KNN_model, mode= 'everything', positive ="1")
+  KNNTruePos <- KNN_Table$table["1","1"]
+  KNNTrueNeg <- KNN_Table$table["0","0"]
+  KNNFalsePos <- KNN_Table$table["1","0"]
+  KNNFalseNeg <- KNN_Table$table["0","1"]
+  
+  KNNSpecificity_TNR <- KNNTrueNeg/(KNNTrueNeg + KNNFalsePos)
+  KNNRecall_TPR <- KNNTruePos/(KNNTruePos+KNNFalseNeg)
+  KNNPrecision <- KNNTruePos/(KNNTruePos+KNNFalsePos)
+  KNNAccuracy <- (KNNTruePos+KNNTrueNeg) / (KNNTruePos+KNNTrueNeg+KNNFalsePos+KNNFalseNeg)
+  KNNF1 <- 2 * ((KNNPrecision*KNNRecall_TPR)/(KNNPrecision+KNNRecall_TPR))
+  
+  KNNMCC <- ((KNNTruePos * KNNTrueNeg) - (KNNFalsePos * KNNFalseNeg)) / ((KNNTruePos + KNNFalsePos) * (KNNTruePos + KNNFalseNeg) * (KNNTrueNeg + KNNFalsePos) * (KNNTrueNeg + KNNFalseNeg))^(0.5)
+  KNNAUC <- ModelMetrics::auc(test$DEATH_EVENT, KNN_model)
+  KNNAUCpr <- MLmetrics::PRAUC(attributes(KNN_modelProb)$prob, test$DEATH_EVENT)
+        # KNN Model Results
+  KNNResult_run <- c(KNNMCC, KNNF1, KNNAccuracy, KNNRecall_TPR, KNNSpecificity_TNR, KNNAUCpr, KNNAUC)
+  knnResult <- rbind(knnResult, KNNResult_run)
+  
+  
+   ## OneRule Model ##
+        # OneRule Model Learning:
+  OneRule_model <- OneR(DEATH_EVENT ~ .,train, verbose = TRUE)
+        # OneRule Model Prediction:
+  OneRule_pred <- predict(OneRule_model, test)
+  OneRule_pred_Prob <- predict(OneRule_model, test, type = "prob")
+        # OneRule Model Evaluation:
+  OneRule_Table <- eval_model(OneRule_pred, test$DEATH_EVENT)
+  OneRuleTruePos <- OneRule_Table$conf_matrix["1","1"]
+  OneRuleTrueNeg <- OneRule_Table$conf_matrix["0","0"]
+  OneRuleFalsePos <- OneRule_Table$conf_matrix["1","0"]
+  OneRuleFalseNeg <- OneRule_Table$conf_matrix["0","1"]
+  OneRuleAccuracy <- (OneRuleTruePos+OneRuleTrueNeg) / (OneRuleTruePos+OneRuleTrueNeg+OneRuleFalsePos+OneRuleFalseNeg)
+  OneRuleSpecificity_TNR <- OneRuleTrueNeg/(OneRuleTrueNeg + OneRuleFalsePos)
+  OneRuleRecall_TPR <- OneRuleTruePos/(OneRuleTruePos+OneRuleFalseNeg)
+  OneRulePrecision <- OneRuleTruePos/(OneRuleTruePos+OneRuleFalsePos)
+  OneRuleF1 <- 2 * ((OneRulePrecision*OneRuleRecall_TPR)/(OneRulePrecision+OneRuleRecall_TPR))
+  OneRuleMCC <- mcc(test$DEATH_EVENT,OneRule_pred)
+  
+  # OneRuleMCC <- ((OneRuleTruePos * OneRuleTrueNeg) - (OneRuleFalsePos * OneRuleFalseNeg)) / ((OneRuleTruePos + OneRuleFalsePos) * (OneRuleTruePos + OneRuleFalseNeg) * (OneRuleTrueNeg + OneRuleFalsePos) * (OneRuleTrueNeg + OneRuleFalseNeg))^(0.5)
+  
+  # There are NAs in my OneRule_pred_Prob there for i need to replace those NAs with something and not erase them, because if i do so the number of my predictions won't be equal to the number of my labels
+  if (sum(is.na(OneRule_pred_Prob))  != 0) {
+    OneRule_pred_Prob[is.na(OneRule_pred_Prob)] <- mean(OneRule_pred_Prob, na.rm = TRUE)
+  }
+  OneRuleAUC <- ModelMetrics::auc(test$DEATH_EVENT, OneRule_pred)
+  OneRuleAUCpr <- MLmetrics::PRAUC(OneRule_pred_Prob[,'1'], test$DEATH_EVENT) 
+        # OneRule Model Results
+  OneRuleResult_run <- c(OneRuleMCC, OneRuleF1, OneRuleAccuracy, OneRuleRecall_TPR, OneRuleSpecificity_TNR, OneRuleAUCpr, OneRuleAUC)
+  OneRuleResult <- rbind(OneRuleResult, OneRuleResult_run)
+  
+  
+  
+  ## SVM ##
+  
+  Radialsvm <- svm(DEATH_EVENT ~ + serum_creatinine + ejection_fraction , data= train ,kernel="radial", cost=10)
+  RadialsvmSoft <- svm(DEATH_EVENT ~ + serum_creatinine + ejection_fraction, data=train ,kernel="radial", cost=10, probability = TRUE)
+  
+        # SVM Prediction:
+  predictSVM <- predict(Radialsvm, test)
+  predict_SVM_Prob <- predict(RadialsvmSoft, test, probability = TRUE)
+  SVMradialConfMat <- caret::confusionMatrix(predictSVM,test$DEATH_EVENT)
+  
+        # SVM Evaluation:
+  SVMradialTruePos <- SVMradialConfMat$table["1","1"]
+  SVMradialTrueNeg <- SVMradialConfMat$table["0","0"]
+  SVMradialFalsePos <- SVMradialConfMat$table["1","0"]
+  SVMradialFalseNeg <- SVMradialConfMat$table["0","1"]
+  SVMradialAccuracy <- SVMradialConfMat$overall["Accuracy"]
+
+  SVMradialSpecificity_TNR <- SVMradialTrueNeg/(SVMradialTrueNeg + SVMradialFalsePos)
+  SVMradialRecall_TPR <- SVMradialTruePos / (SVMradialTruePos + SVMradialFalseNeg)
+  SVMradialPrecision <- SVMradialTruePos / (SVMradialTruePos + SVMradialFalsePos)
+  SVMradialF1 <- 2 * ((SVMradialPrecision*SVMradialRecall_TPR)/(SVMradialPrecision+SVMradialRecall_TPR))
+  SVMradialMCC <- mcc(test$DEATH_EVENT,predictSVM)
+  # SVMradialMCC <- ((SVMradialTruePos * SVMradialTrueNeg) - (SVMradialFalsePos * SVMradialFalseNeg)) / ((SVMradialTruePos + SVMradialFalsePos) * (SVMradialTruePos + SVMradialFalseNeg) * (SVMradialTrueNeg + SVMradialFalsePos) * (SVMradialTrueNeg + SVMradialFalseNeg))^(0.5)
+  SVMradialAUC <- ModelMetrics::auc(test$DEATH_EVENT, predictSVM)
+  SVMradialAUCpr <- MLmetrics::PRAUC(as.numeric(predict_SVM_Prob), test$DEATH_EVENT)
+    # https://search.r-project.org/CRAN/refmans/MLmetrics/html/PRAUC.html
+      # SVM Results
+  
+  SVMradialResult_run <- c(SVMradialMCC, SVMradialF1, SVMradialAccuracy, SVMradialRecall_TPR, SVMradialSpecificity_TNR, SVMradialAUCpr, SVMradialAUC)
+  svmRadResult <- rbind(svmRadResult, SVMradialResult_run)
+
+}
+
+
+# Sometimes The OneRule model gave us NAN value for F1
+
+
+## ANN Model ##
+
+ANNResult <- c()
+if (ncol(New_Dataset) != 12) {
+  New_Dataset <- subset(New_Dataset, select = -time)
+
+}
+# New_Dataset1 <- New_Dataset
+for (i in 1:12) {
+  New_Dataset[,i] <- (New_Dataset[,i] - min(New_Dataset[,i]))/(max(New_Dataset[,i])-min(New_Dataset[,i]))
+}
+
+for (ir in 1:nRun) {
+  cat(ir, "")
+  # sampling the rows of my data
+  New_Dataset <- New_Dataset[sample(nrow(New_Dataset)),] 
+  ind <- eval(nTrain+1):nrow(dataset)
+  # Division dataset -> trainSet + validationSet:
+  ANN_train <- New_Dataset[1:nTrain ,] # Train dataset
+  ANN_test <- New_Dataset[ind ,] # test dataset
+
+  ANN_model <- neuralnet(DEATH_EVENT~age+anaemia+creatinine_phosphokinase+diabetes+ejection_fraction+
+                   high_blood_pressure+platelets+serum_creatinine+
+                   serum_sodium+sex+smoking,data = ANN_train, hidden = c(5,3),
+                 linear.output = FALSE)
+  
+  output <- compute(ANN_model, ANN_test[,-12])
+  ANNpredict <- output$net.result * (max(New_Dataset[ind, 12]) - min(New_Dataset[ind, 12])) + min(New_Dataset[ind, 12])
+  actual <- New_Dataset[ind, 12]
+  MSE <- sum((ANNpredict-actual)^2)/nrow(ANN_test)
+  ANN_Table <- table(actual, round(ANNpredict))
+  ANNTruePos <- ANN_Table["1","1"]
+  ANNTrueNeg <- ANN_Table["0","0"]
+  ANNFalsePos <- ANN_Table["1","0"]
+  ANNFalseNeg <- ANN_Table["0","1"]
+  ANNAccuracy <- (ANNTruePos+ANNTrueNeg) / (ANNTruePos+ANNTrueNeg+ANNFalsePos+ANNFalseNeg)
+  ANNSpecificity_TNR <- ANNTrueNeg/(ANNTrueNeg + ANNFalsePos)
+  ANNRecall_TPR <- ANNTruePos/(ANNTruePos+ANNFalseNeg)
+  ANNPrecision <- ANNTruePos/(ANNTruePos+ANNFalsePos)
+  ANNF1 <- 2 * ((ANNPrecision*ANNRecall_TPR)/(ANNPrecision+ANNRecall_TPR))
+  ANNMCC <- ((ANNTruePos * ANNTrueNeg) - (ANNFalsePos * ANNFalseNeg)) / ((ANNTruePos + ANNFalsePos) * (ANNTruePos + ANNFalseNeg) * (ANNTrueNeg + ANNFalsePos) * (ANNTrueNeg + ANNFalseNeg))^(0.5)
+  ANNAUC <- ModelMetrics::auc(test$DEATH_EVENT, ANNpredict)
+  ANNAUCpr <- MLmetrics::PRAUC(ANNpredict, ANN_test$DEATH_EVENT)
+
+  ANNResult_run <- c(ANNMCC, ANNF1, ANNAccuracy, ANNRecall_TPR, ANNSpecificity_TNR, ANNAUCpr, ANNAUC)
+  ANNResult <- rbind(ANNResult, ANNResult_run)
+  
+}
+
+Res <- c(colMeans(forestResult), colMeans(treeResult), colMeans(naiveBayesResult), colMeans(grBosResult), colMeans(knnResult), colMeans(OneRuleResult), colMeans(ANNResult), colMeans(svmRadResult)) 
+
+Table4 <- matrix(Res,ncol=7, byrow=TRUE)
+
+#define column names and row names of the Table
+
+colnames(Table4) <- c('MCC', 'F1 Score', 'Accuracy', 'TP Rate', "TN Rate", "PR AUC", 'ROC AUC')
+
+rownames(Table4) <- c("Random Forest", "Decision Tree", "Naive Bayes", "Gradient Boosting", "KNN", "OneRule", "ANN", "SVM")
+Table4 <- round(Table4, digits = 3)
+Table4 <- Table4[order(Table4[,1], decreasing = TRUE), ]
+view(Table4)
+```
+
+## 4.3 Random Forests feature ranking.
+
+In terms of Random Forests feature ranking, serum creatinine, ejection fraction, and age were identified as the top three most important features of the dataset by both the accuracy reduction and the Gini impurity rankings. As we can see in the table below.
+
+```{r}
+# Table8 : Random Forests feature selection aggregate ranking
+MeanDecreaseGini <- forest_model$importance[, "MeanDecreaseGini"]
+MeanDecreaseAccuracy <- forest_model$importance[, "MeanDecreaseAccuracy"]
+features <- c("age", "anaemia", "creatinine_phosphokinase", "diabetes", "ejection_fraction", "high_blood_pressure", "platelets", "serum_creatinine", "serum_sodium", "smoking", "sex")
+
+AccuracyDecrease  <- c()
+GiniDecrease <- c()
+
+for (accuracy in 1:11) {
+  AccuracyDecrease <- c(AccuracyDecrease, MeanDecreaseAccuracy[features[accuracy]])
+}
+for (gini in 1:11) {
+  GiniDecrease <- c(GiniDecrease, MeanDecreaseGini[features[gini]])
+}
+Table8G <- data.frame(V1 = c("age","anaemia","creatinine_phosphokinase","diabetes","ejection_fraction", "high_blood_pressure","platelets","serum_creatinine","serum_sodium", "sex","smoking"), V2 = format(AccuracyDecrease, format = "e", digits = 3) )
+
+Table8G <- Table8G[order(as.numeric(Table8G$V2), decreasing = TRUE), ]
+Table8G$AccuracyRank <-  c(1, 2, 3, 4, 5, 6,7,8,9,10,11)
+names(Table8G)[names(Table8G) == "V1"] <- "Feature"
+names(Table8G)[names(Table8G) == "V2"] <- "Accuracy decrease"
+
+Table8G <- Table8G %>% select( Feature, `Accuracy decrease`, AccuracyRank)
+
+Table8D <- data.frame(V1 = c("age","anaemia","creatinine_phosphokinase","diabetes","ejection_fraction", "high_blood_pressure","platelets","serum_creatinine","serum_sodium", "sex","smoking"), V2 = format(GiniDecrease, format = "e", digits = 3) )
+
+Table8D <- Table8D[order(as.numeric(Table8D$V2), decreasing = TRUE), ]
+Table8D$GiniRank <-  c(1, 2, 3, 4, 5, 6,7,8,9,10,11)
+names(Table8D)[names(Table8D) == "V1"] <- "Feature"
+names(Table8D)[names(Table8D) == "V2"] <- "Gini impurity"
+
+Table8D <- Table8D %>% select(`Gini impurity`, GiniRank,"Feature")
+
+Table8 <- cbind(Table8G,Table8D)
+view(Table8)
+
+```
+
+## 4.4 Random Forests feature selection. Accuracy reduction. Gini impurity
+
+Here i took both of the accuracy reduction and the Gini impurity rankings and plot them so as we can visually see that the serum creatinine and ejection fraction are the most top 2 features.
+
+```{r}
+# Fig. 1 Random Forests feature selection. Accuracy reduction. Gini impurity. Random Forests feature selection through accuracy reduction and Random Forests feature selection through Gini impurity.
+
+accuacydata <- data.frame(
+  ACC_Id = c (1:11), 
+  ACC_Attr = features,
+  ACC_Value = MeanDecreaseAccuracy)
+
+accuacydata %>% 
+  ggplot(aes(ACC_Value, reorder(ACC_Attr,+ACC_Value)))+
+  geom_col() +
+  labs(x="MeanDecreaseAccuracy", y = "Features", title="Descending order Bars in Barplot with reorder()")
+
+ginidata <- data.frame(
+  GINI_Id = c (1:11), 
+  GINI_Attr = features,
+  GINI_Value = MeanDecreaseGini)
+
+ginidata %>% 
+  ggplot(aes(GINI_Value, reorder(GINI_Attr,+ GINI_Value)))+
+  geom_col() +
+  labs(x="MeanDecreaseGini", y = "Features",title="Descending order Bars in Barplot with reorder()")
+
+AccuracyDecrease  <- c()
+GiniDecrease <- c()
+
+```
+
+## 4-5 Machine Learning predictions with serum_creatinine and ejection_fraction
+
+From all the above statistical tests, the Accuracy reduction and the Gini impurity results we can see that serum creatinine and ejectrion fraction are strong indicators of the death event. That's why i chosed to see if utilizing only theses two top ranking features, the machine learning could accurately forecast a patient's survival. As a result, i devised a new computational pipeline that included a feature ranking phase followed by a binary classification phase based on the top two features. As you can see in the table 9 below.
+
+To further validate the predictive power of serum creatinine and ejection fraction, we created a scatterplot with serum creatinine values on the x axis and ejection fraction values on the y axis, and we colored each patient point according to survival status survived or dead, (Fig. 3). 
+This plot clearly distinguishes between alive and dead patients, which we highlighted by manually inserting a black straight line.
+
+```{r}
+# Fig 3 : Scatterplot of serum creatinine versus ejection fraction. Serum creatinine (x axis) range: [0.50, 9.40] mg/dL. Ejection fraction (y axis) range: [14, 80]%. We manually drew a black straight line to highlight the discrimination between alive and dead patients
+
+ggplot(dataset, aes(x = serum_creatinine, y = ejection_fraction)) +
+  geom_point(aes(colour = DEATH_EVENT)) + # Points and color by group
+  geom_abline(intercept = 2 , slope = 14) +  # Line coordinates
+  labs( x = "Serum Creatinine", y = "Ejection Fraction", color = "Patient Status\n") +
+  scale_color_manual(labels = c("Survived", "Dead"), values = c("#FC515A", "#24F5E0")) +
+  theme(axis.line = element_line(colour = "black", # Changes the default theme
+                                 size = 0.24))
+```
+
+```{r}
+# Table 9 : Survival prediction results on serum creatinine and ejection fraction – mean of 100 executions
+
+datasetMachineLearning <- subset(dataset, select = -time)
+# we don't need time because for real patients we wont have the feature time so its best to test remove it from the list.
+
+# Number of runs of our pipeline
+nRun <- 100
+res <- c()
+svmF1 <- c()
+# nTrain variable for the devision rate.
+nTrain <- round(0.8*nrow(datasetMachineLearning))  
+
+# Initializing our results vecotrs 
+newforestResult <- c()
+newGrboostResult <- c()
+
+#linRegResult <- c()
+NewSvmRadResult <- c()
+# svmLinResult <-c()
+
+ind <- eval(nTrain+1):nrow(dataset)
+
+for (irun in 1:nRun) {
+   cat(irun, "")
+  
+  # sampling the rows of my data
+  datasetMachineLearning <- datasetMachineLearning[sample(nrow(datasetMachineLearning)),] 
+  
+  # Data Division into training set and testing set.
+  newTrain <- datasetMachineLearning[1:nTrain ,] # Train set
+  newTest <- datasetMachineLearning[ind ,] # test set
+  
+  # Getting extra dataset for testing and training where in certain model i will need the Death_event attribute to be a factor and in other models as numeric.
+  newtrain_char <- newTrain 
+  newtrain_char$DEATH_EVENT <- as.character(newtrain_char$DEATH_EVENT)
+  newtrain_num <- newTrain
+  newtrain_num$DEATH_EVENT <- as.numeric(newtrain_num$DEATH_EVENT)
+  
+          # # #  # # #  # # #  # # # 
+  
+  # # #   Machine Learning Models     # # # 
+
+          # # #  # # #  # # #  # # #
+  
+    ## Random Forest ##
+      # Random forests Learning:
+  newforest_model <- randomForest(DEATH_EVENT ~ serum_creatinine + ejection_fraction,data= newTrain, importance = TRUE)
+      # Random forests Prediction:
+  newforestPrediction <- predict(newforest_model, newTest, type='class')
+  newforestPredictionProb <- predict(newforest_model, newTest, type='prob')
+      # Random forests Evaluation:
+  newForestConfMat <- caret::confusionMatrix(newforestPrediction, newTest$DEATH_EVENT, mode= 'everything', positive ="1" )
+  newforestTruePos <- newForestConfMat$table["1","1"]
+  newforestTrueNeg <- newForestConfMat$table["0","0"]
+  newforestFalsePos <- newForestConfMat$table["1","0"]
+  newforestFalseNeg <- newForestConfMat$table["0","1"]
+  newforestAccuracy <- newForestConfMat$overall["Accuracy"]
+  
+  newforestRecall_TPR <- newforestTruePos / (newforestTruePos + newforestFalseNeg)
+  newforestPrecision <- newforestTruePos / (newforestTruePos + newforestFalsePos)
+  
+  newforestF1 <- 2 * ((newforestPrecision*newforestRecall_TPR)/(newforestPrecision+newforestRecall_TPR))
+  newforestSpecificity_TNR <- newforestTrueNeg/(newforestTrueNeg + newforestFalsePos)
+  
+  newforestMCC <- ((newforestTruePos * newforestTrueNeg) - (newforestFalsePos * newforestFalseNeg)) / ((newforestTruePos + newforestFalsePos) * (newforestTruePos + newforestFalseNeg) * (newforestTrueNeg + newforestFalsePos) * (newforestTrueNeg + newforestFalseNeg))^(0.5)
+  newforestAUC <- ModelMetrics::auc(newTest$DEATH_EVENT, newforestPrediction)
+  newforestAUCpr <- MLmetrics::PRAUC(newforestPredictionProb[,"1"], newTest$DEATH_EVENT)
+    # https://search.r-project.org/CRAN/refmans/MLmetrics/html/PRAUC.html
+      # Random forests Results
+  newforestResult_run <- c(newforestMCC, newforestF1, newforestAccuracy, newforestRecall_TPR, newforestSpecificity_TNR, newforestAUCpr, newforestAUC)
+  newforestResult <- rbind(newforestResult, newforestResult_run)
+  
+  ## Random Forest ##
+      # Random forests Learning:
+  newGrboost_model <- gbm(DEATH_EVENT ~ serum_creatinine + ejection_fraction,data= newtrain_char, distribution = "bernoulli")
+      # Random Grboosts Prediction:
+  newGrboostPrediction <- predict(newGrboost_model, newTest, type='response')
+  newGrboostPredictionBinnary <- rep("0", nrow(newTest))
+  newGrboostPredictionBinnary[which(newGrboostPrediction>=0.5)] <- '1'
+  newGrboostPredictionBinnary <- factor(newGrboostPredictionBinnary, levels = levels(newTest$DEATH_EVENT))
+  newGrboostPrediction_prob <- newGrboostPrediction
+        # Random Grboosts Evaluation:
+  newGrboostConfMat <- caret::confusionMatrix(newGrboostPredictionBinnary, newTest$DEATH_EVENT, mode= 'everything', positive ="1" )
+  newGrboostTruePos <- newGrboostConfMat$table["1","1"]
+  newGrboostTrueNeg <- newGrboostConfMat$table["0","0"]
+  newGrboostFalsePos <- newGrboostConfMat$table["1","0"]
+  newGrboostFalseNeg <- newGrboostConfMat$table["0","1"]
+  newGrboostAccuracy <- (newGrboostTruePos + newGrboostTrueNeg) / (newGrboostTruePos + newGrboostTrueNeg + newGrboostFalsePos + newGrboostFalseNeg)
+  
+  newGrboostSpecificity_TNR <- newGrboostTrueNeg / (newGrboostTrueNeg + newGrboostFalsePos)
+  newGrboostRecall_TPR <- newGrboostTruePos / (newGrboostTruePos + newGrboostFalseNeg)
+  newGrboostPrecision <- newGrboostTruePos / (newGrboostTruePos + newGrboostFalsePos)
+  
+  newGrboostF1 <- 2 * ((newGrboostPrecision*newGrboostRecall_TPR)/(newGrboostPrecision+newGrboostRecall_TPR))
+  
+  newGrboostMCC <- ((newGrboostTruePos * newGrboostTrueNeg) - (newGrboostFalsePos * newGrboostFalseNeg)) / ((newGrboostTruePos + newGrboostFalsePos) * (newGrboostTruePos + newGrboostFalseNeg) * (newGrboostTrueNeg + newGrboostFalsePos) * (newGrboostTrueNeg + newGrboostFalseNeg))^(0.5)
+  newGrboostAUC <- ModelMetrics::auc(newTest$DEATH_EVENT, newGrboostPredictionBinnary)
+  newGrboostAUCpr <- MLmetrics::PRAUC(newGrboostPrediction_prob, newTest$DEATH_EVENT)
+    # https://search.r-project.org/CRAN/refmans/MLmetrics/html/PRAUC.html
+      # Random Grboosts Results
+  
+  newGrboostResult_run <- c(newGrboostMCC, newGrboostF1, newGrboostAccuracy, newGrboostRecall_TPR, newGrboostSpecificity_TNR, newGrboostAUCpr, newGrboostAUC)
+  newGrboostResult <- rbind(newGrboostResult, newGrboostResult_run)
+  
+  
+  ## SVM ##
+  
+  RadialNewSvm <- svm(DEATH_EVENT ~ + serum_creatinine + ejection_fraction , data= newTrain ,kernel="radial", cost=10)
+  RadialNewSvmSoft <- svm(DEATH_EVENT ~ + serum_creatinine + ejection_fraction, data=newTrain ,kernel="radial", cost=10, probability = TRUE)
+  predictNewSvm <- predict(RadialNewSvm, newTest)
+  predictNewSvm_prob <- predict(RadialNewSvmSoft, newTest, probability = TRUE)
+  NewSvmradialConfMat <- table(predictNewSvm,newTest$DEATH_EVENT)
+  
+        # SVM Evaluation:
+  NewSvmradialTruePos <- NewSvmradialConfMat["1","1"]
+  NewSvmradialTrueNeg <- NewSvmradialConfMat["0","0"]
+  NewSvmradialFalsePos <- NewSvmradialConfMat["1","0"]
+  NewSvmradialFalseNeg <- NewSvmradialConfMat["0","1"]
+  NewSvmradialAccuracy <- (NewSvmradialTruePos + NewSvmradialTrueNeg) / (NewSvmradialTruePos + NewSvmradialTrueNeg + NewSvmradialFalsePos + NewSvmradialFalseNeg)
+
+  NewSvmradialSpecificity_TNR <- NewSvmradialTrueNeg/(NewSvmradialTrueNeg + NewSvmradialFalsePos)
+  NewSvmradialRecall_TPR <- NewSvmradialTruePos / (NewSvmradialTruePos + NewSvmradialFalseNeg)
+  NewSvmradialPrecision <- NewSvmradialTruePos / (NewSvmradialTruePos + NewSvmradialFalsePos)
+  NewSvmradialF1 <- 2 * ((NewSvmradialPrecision*NewSvmradialRecall_TPR)/(NewSvmradialPrecision+NewSvmradialRecall_TPR))
+  NewSvmradialMCC <- ((NewSvmradialTruePos * NewSvmradialTrueNeg) - (NewSvmradialFalsePos * NewSvmradialFalseNeg)) / ((NewSvmradialTruePos + NewSvmradialFalsePos) * (NewSvmradialTruePos + NewSvmradialFalseNeg) * (NewSvmradialTrueNeg + NewSvmradialFalsePos) * (NewSvmradialTrueNeg + NewSvmradialFalseNeg))^(0.5)
+  NewSvmradialAUC <- ModelMetrics::auc(newTest$DEATH_EVENT, predictNewSvm)
+  NewSvmradialAUCpr <- MLmetrics::PRAUC(as.numeric(predictNewSvm_prob), newTest$DEATH_EVENT)
+    # https://search.r-project.org/CRAN/refmans/MLmetrics/html/PRAUC.html
+      # SVM Results
+  
+  NewSvmradialResult_run <- c(NewSvmradialMCC, NewSvmradialF1, NewSvmradialAccuracy, NewSvmradialRecall_TPR, NewSvmradialSpecificity_TNR, NewSvmradialAUCpr, NewSvmradialAUC)
+  NewSvmRadResult <- rbind(NewSvmRadResult, NewSvmradialResult_run)
+  
+}
+
+newRes <- c(colMeans(newforestResult), colMeans(newGrboostResult), colMeans(NewSvmRadResult)) 
+
+Table9 <- matrix(newRes,ncol=7, byrow=TRUE)
+
+colnames(Table9) <- c('MCC', 'F1 Score', 'Accuracy', 'TP Rate', "TN Rate", "PR AUC", 'ROC AUC')
+
+rownames(Table9) <- c("Random Forest","Gradient Boosting", "SVM")
+Table9 <- round(Table9, digits = 3)
+view(Table9)
+```
+
+
+### Fig 4
+Barplot of the survival percentage for each follow-up month. Follow-up time (x axis) range: [0, 9] months. Survival percentage (y axis) range: [11.43, 100]%. For each month, we report here the percentage of survived patients. For the 0 month (less than 30 days), for example, there were 11.43% survied patients and 88.57% deceased patients
+```{r}
+a <- 0 
+b <- 30
+SurvivedPercentage <- c()
+for (i in 1:10) {
+  MonthFrequency <- sum(DEND$time < b & DEND$time >= a) / sum(dataset$time < b & dataset$time >= a) * 100
+  a <- a + 30
+  b <- b + 30
+  SurvivedPercentage <- c(SurvivedPercentage, MonthFrequency)
+}
+Months <- c("0", "1", "2", "3", "4", "5", "6", "7", "8", "9")
+
+ggplot() + geom_col(aes(x = SurvivedPercentage, y = Months)) + coord_flip()
+
+
+```
+This plot demonstrates that it is impossible to correlate patient survival to the follow-up month because the survival trend is not linear: month 5 has fewer surviving patients than months 4 and 6. 
+
+# 5- Limatations 
+
+We must report the small size of the dataset (299 patients) as a limitation of this stud, a larger dataset with thousands of patients would have allowed us to obtain more reliable results. If additional external dataset with the same features from different geographical regions from many hospitals across Pakistan had been available, we would have used it as a validation cohort to confirm our findings and confirm if these results can be generalized on the whole population of Pakistan.
+In the dataset provided for us, we can see that many variables are unbalanced, for example, we have more men (64.88%) than women (35.12%) and more non smokers (67.89%) than patients who smoke (32.11%).
+
+
+# 6- Conclusion
+
+In this study, we attempted a predict classification problem in the Heart Disease dataset using a variety of models to classify Heart Disease predictions in terms of determining whether anyone is likely to get heart disease based on input parameters such as serum creatinine, fraction ejection, gender, age, and various test results.
+
+Our findings not only suggest that it may be possible to predict the survival of patients with heart failure solely based on serum creatinine and ejection fraction, but also that predictions based on these two variables alone can be as accurate, if not more so, than predictions based on all variables combined.
+
+
+# 7- Bibliographie.
+- <https://www.ahajournals.org/doi/10.1161/CIRCRESAHA.119.315889?cookieSet=1>  
+- <https://www.heart.org/en/health-topics/heart-failure/diagnosing-heart-failure/ejection-fraction-heart-failure-measurement>  
+- <https://www.mayoclinic.org/tests-procedures/creatinine-test/about/pac-20384646>  
+- <https://www.urmc.rochester.edu/encyclopedia/content.aspx?ContentTypeID=160&ContentID=36>  
+- <https://www.sciencedirect.com/science/article/pii/B9781416022152501083>  
+- https://www.mountsinai.org/health-library/tests/creatine-phosphokinase-test  
+- https://www.ibm.com/docs/fr/SSLVMB_subs/statistics_mainhelp_ddita/spss/base/idh_nt2i.html  
+- https://statsandr.com/blog/correlation-coefficient-and-correlation-test-in-r/  
+- https://www.geeksforgeeks.org/shapiro-wilk-test-in-r-programming/#:~:text=The%20Shapiro%2DWilk's%20test%20or,kinds%20of%20departure%20from%20normality.  
+- <https://towardsdatascience.com/understanding-random-forest-58381e0602d2>  
+- <https://towardsdatascience.com/decision-tree-classifier-explained-in-real-life-picking-a-vacation-destination-6226b2b60575>  
+- https://towardsdatascience.com/gradient-boosting-classification-explained-through-python-60cc980eeb3d  
+- https://towardsdatascience.com/naive-bayes-classifier-81d512f50a7c  
+ -https://www.datacamp.com/community/tutorials/k-nearest-neighbor-classification-scikit-learn  
+- https://www.saedsayad.com/oner.htm#:~:text=OneR%2C%20short%20for%20%22One%20Rule,each%20predictor%20against%20the%20target.  
+- https://datascienceplus.com/radial-kernel-support-vector-classifier/  
+- https://www.kaggle.com/code/shrutimechlearn/deep-tutorial-1-ann-and-classification/notebook  
+  
